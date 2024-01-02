@@ -12,6 +12,7 @@ from keras.optimizers import Adam
 from keras.losses import binary_crossentropy
 from keras.preprocessing.image import ImageDataGenerator
 from keras import backend as K
+from keras.optimizers import Adam, SGD
 
 # Don't Show Warning Messages
 import warnings
@@ -24,9 +25,9 @@ IMG_CHANNELS = 1  # Update to 1 for grayscale images
 NUM_TEST_IMAGES = 10
 
 # Data paths
-train_data_dir = '/content/drive/MyDrive/MobileNet/DataSet/train'
-val_data_dir = '/content/drive/MyDrive/MobileNet/DataSet/val'
-test_data_dir = '/content/drive/MyDrive/MobileNet/DataSet/test'
+train_data_dir = '/content/drive/MyDrive/MobileNet/Dataset/train'
+val_data_dir = '/content/drive/MyDrive/MobileNet/Dataset/val'
+test_data_dir = '/content/drive/MyDrive/MobileNet/Dataset/test'
 
 # Define data augmentation parameters
 datagen = ImageDataGenerator(
@@ -77,10 +78,14 @@ def load_and_preprocess_data(data_dir, augment=False, add_noise=False):
         masks.append(mask)
 
         # Apply data augmentation if specified
+# Apply data augmentation if specified
         if augment:
             seed = np.random.randint(1, 1000)
-            image = datagen.random_transform(image, seed=seed)
-            mask = datagen.random_transform(mask, seed=seed)
+            augmented = datagen.random_transform(np.concatenate([image, mask], axis=-1), seed=seed)
+
+            # Split the augmented array back into image and mask
+            image = augmented[:, :, :1]
+            mask = augmented[:, :, 1:]
 
             # Ensure the values are still in the [0, 1] range
             image = np.clip(image, 0, 1)
@@ -154,32 +159,16 @@ fastscnn_model.summary()
 checkpoint = ModelCheckpoint('fastscnn_model.h5', save_best_only=True)
 
 # Define a learning rate schedule
-def lr_schedule(epoch):
-    
-    # if epoch <=400:
-    #   lr = 1e-2
-    # elif epoch > 400 and epoch <=100 :
-    #     lr = 1e-3
-    # elif epoch > 1000 and epoch <=2000 :
-    #     lr = 1e-4
-    # elif epoch > 2000 and epoch <=2500 :
-    #     lr = 1e-5
-    # else :
-    lr = 1e-4
-    # if epoch > 100 and epoch <300 :
-    #     lr *= 0.1
- 
-    return lr
 
 # Create a learning rate scheduler callback
-lr_scheduler = LearningRateScheduler(lr_schedule)
+#lr_scheduler = LearningRateScheduler(lr_schedule)
 
 # Train the FastSCNN model
 fastscnn_history = fastscnn_model.fit(
     train_images, train_masks,
     validation_data=(val_images, val_masks),
-    epochs=1500, batch_size=16, verbose=1,
-    callbacks=[checkpoint, lr_scheduler]
+    epochs=5000, batch_size=64, verbose=1,
+    callbacks=[checkpoint]
 )
 
 # Evaluate the model on the test set
@@ -216,9 +205,9 @@ IMG_CHANNELS = 1
 NUM_TEST_IMAGES = 10
 
 # Data paths
-train_data_dir = '/content/drive/MyDrive/MobileNet/DataSet/train'
-val_data_dir = '/content/drive/MyDrive/MobileNet/DataSet/val'
-test_data_dir = '/content/drive/MyDrive/MobileNet/DataSet/test'
+train_data_dir = '/content/drive/MyDrive/MobileNet/Dataset/train'
+val_data_dir = '/content/drive/MyDrive/MobileNet/Dataset/val'
+test_data_dir = '/content/drive/MyDrive/MobileNet/Dataset/test'
 
 def load_and_preprocess_data(data_dir):
     images = []
