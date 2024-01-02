@@ -8,6 +8,7 @@ from keras.callbacks import ModelCheckpoint
 from keras.optimizers import Adam
 from keras.losses import binary_crossentropy
 from keras.preprocessing.image import ImageDataGenerator
+import matplotlib.pyplot as plt
 
 # Don't Show Warning Messages
 import warnings
@@ -214,3 +215,34 @@ enet_history = enet_model.fit(
 # Evaluate the model on the test set
 test_loss, test_accuracy = enet_model.evaluate(test_images, test_masks)
 print(f'Test Loss: {test_loss}, Test Accuracy: {test_accuracy}')
+
+predictions = enet_model.predict(test_images)
+# Visualize some predictions
+def save_predictions(images, masks, predictions, output_dir, num_samples=25):
+    for i in range(num_samples):
+        plt.figure(figsize=(15, 5))
+
+        plt.subplot(1, 3, 1)
+        plt.imshow(images[i][:,:,:])
+        plt.title('Input Image')
+
+        plt.subplot(1, 3, 2)
+        plt.imshow(masks[i][:, :, 0], cmap='viridis')
+        plt.title('True Mask')
+
+        plt.subplot(1, 3, 3)
+        plt.imshow(predictions[i][:, :, 0], cmap='viridis')
+        plt.title('Predicted Mask')
+
+        # Save the figure
+        output_path = os.path.join(output_dir, f"prediction_{i + 1}.png")
+        plt.show()
+
+# Define the output directory
+output_directory = '/content/drive/MyDrive/Unet_mobile_net/predictions_N'
+
+# Make sure the output directory exists
+#os.makedirs(output_directory, exist_ok=True)
+
+# Save predictions on the test data
+save_predictions(test_images, test_masks, predictions, output_directory)
