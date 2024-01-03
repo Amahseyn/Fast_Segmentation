@@ -1,0 +1,151 @@
+import os
+import numpy as np
+import cv2
+from keras.models import Model
+from keras.layers import Input, Conv2D, BatchNormalization, Activation, MaxPooling2D, UpSampling2D, Concatenate
+from keras.optimizers import Adam
+from keras.losses import binary_crossentropy
+from keras.preprocessing.image import ImageDataGenerator
+from keras.callbacks import ModelCheckpoint
+import random
+# Don't Show Warning Messages
+import warnings
+warnings.filterwarnings('ignore')
+
+IMG_HEIGHT = 128
+IMG_WIDTH = 128
+IMG_CHANNELS = 1  # Grayscale images have 1 channel
+
+# Data paths
+train_data_dir = '/content/drive/MyDrive/MobileNet/Dataset/train'
+val_data_dir = '/content/drive/MyDrive/MobileNet/Dataset/val'
+test_data_dir = '/content/drive/MyDrive/MobileNet/Dataset/test'
+
+# Define data augmentation parameters
+datagen = ImageDataGenerator(
+    horizontal_flip=True,
+    vertical_flip=True,
+    #brightness_range=[0.5, 1.5],  # Adjust the range based on your preference
+    # rotation_range=30,
+    # zoom_range=0.2,
+    # shear_range=0.2,
+    fill_mode='nearest'
+)
+
+def load_and_preprocess_data(data_dir, augment=False, add_noise=False):
+    images = []
+    masks = []
+
+    for image_filename in os.listdir(os.path.join(data_dir, 'images')):
+        image_path = os.path.join(data_dir, 'images', image_filename)
+        mask_path = os.path.join(data_dir, 'masks', image_filename)
+
+        # Read and preprocess image in grayscale
+        image = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
+        image = cv2.resize(image, (IMG_HEIGHT, IMG_WIDTH))
+        image = image / 255.0
+        image = np.expand_dims(image, axis=-1)  # Add channel dimension
+
+        # Read and preprocess mask
+        mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
+        mask = (mask >= 10).astype(np.float32)  # Ensure the correct data type
+        mask = cv2.resize(mask, (IMG_HEIGHT, IMG_WIDTH))
+        mask = mask / 255.0  # Normalize to [0, 1]
+        mask = np.expand_dims(mask, axis=-1)  # Add channel dimension
+
+        # Apply data augmentation if specified
+        if augment:
+            seed = np.random.randint(1, 1000)
+            augmented = datagen.random_transform(np.concatenate([image, mask], axis=-1), seed=seed)
+
+            # Split the augmented array back into image and mask
+            image = augmented[:, :, :1]
+            mask = augmented[:, :, 1:]
+
+            # Ensure the values are still in the [0, 1] range
+            image = np.clip(image, 0, 1)
+            mask = np.clip(mask, 0, 1)
+
+        # Apply noise if specified
+        if add_noise:
+            image = gaussian_noise(image)
+            image = add_brightness(image)
+        images.append(image)
+        masks.append(mask)
+
+    return np.array(images), np.array(masks)
+
+
+
+def gaussian_noise(image, noise_factor=.3):
+    """
+    Add random noise to the image.
+    """
+    row, col, _ = image.shape
+    gauss = np.random.normal(0, noise_factor, (row, col, 1))
+    noisy = image + gauss
+    noisy = np.clip(noisy, 0, 1)
+    return noisy
+def add_brightness(image, noise_factor=.2):
+    """
+    Add random noise to the image.
+    """
+    row, col, _ = image.shape
+    brightness = random.randrange(0,noise_factor)
+    noisy = image + brightness
+    noisy = np.clip(noisy, 0, 1)
+    return noisy
+
+# Build SegNet model
+def segnet_model(input_size=(IMG_HEIGHT, IMG_WIDTH, IMG_CHANNELS)):
+    inputs = Input(input_size)
+
+    # Encoder
+    x = Conv2D(32, (3, 3), activation='relu', padding='same')(inputs)
+    x = BatchNormalization()(x)
+    x = MaxPooling2D((2, 2), strides=(2, 2))(x)
+
+    x = Conv2D(64, (3, 3), activation='relu', padding='same')(x)
+    x = BatchNormalization()(x)
+    x = MaxPooling2D((2, 2), strides=(2, 2))(x)
+
+    x = Conv2D(128, (3, 3), activation='relu', padding='same')(x)
+    x = BatchNormalization()(x)
+    x = MaxPooling2D((2, 2), strides=(2, 2))(x)
+
+    # Decoder
+    x = UpSampling2D((2, 2))(x)
+    x = Conv2D(128, (3, 3), activation='relu', padding='same')(x)
+    x = BatchNormalization()(x)
+
+    x = UpSampling2D((2, 2))(x)
+    x = Conv2D(64, (3, 3), activation='relu', padding='same')(x)
+    x = BatchNormalization()(x)
+
+    x = UpSampling2D((2, 2))(x)
+    x = Conv2D(32, (3, 3), activation='relu', padding='same')(x)
+    x = BatchNormalization()(x)
+
+    # Output layer
+    outputs = Conv2D(1, (1, 1), activation='sigmoid')(x)
+
+    model = Model(inputs=inputs, outputs=outputs)
+    return model
+
+# Compile the model
+model = segnet_model()
+model.compile(optimizer=Adam(lr=1e-5), loss=binary_crossentropy, metrics=['accuracy'])
+
+# Load and preprocess data
+train_images, train_masks = load_and_preprocess_data(train_data_dir, augment=True, add_noise=False)
+val_images, val_masks = load_and_preprocess_data(val_data_dir, augment=False, add_noise=False)
+test_images, test_masks = load_and_preprocess_data(test_data_dir, augment=False, add_noise=False)
+
+# Train the model
+model_checkpoint = ModelCheckpoint('segnet_model.h5', save_best_only=True)
+history = model.fit(train_images, train_masks, validation_data=(val_images, val_masks),
+                    batch_size=16, epochs=2000, callbacks=[model_checkpoint])
+
+# Evaluate the model on the test set
+test_loss, test_accuracy = model.evaluate(test_images, test_masks)
+print(f'Test Loss: {test_loss}, Test Accuracy: {test_accuracy}')
