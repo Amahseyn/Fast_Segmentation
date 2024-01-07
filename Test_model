@@ -1,0 +1,76 @@
+import os
+import numpy as np
+import cv2
+from keras.models import Model, load_model
+import random
+import matplotlib.pyplot as plt
+# Don't Show Warning Messages
+import warnings
+warnings.filterwarnings('ignore')
+
+IMG_HEIGHT = 128
+IMG_WIDTH = 128
+IMG_CHANNELS = 1
+
+model_path ="/content/drive/MyDrive/MobileNet/6jan_l4_c32_lr4_ep4000.h5"
+test_data_dir = '/content/drive/MyDrive/MobileNet/Dataset/test'
+
+
+def load_and_preprocess_data(data_dir, augment=False, add_noise=False):
+    images = []
+    masks = []
+
+    for image_filename in os.listdir(os.path.join(data_dir, 'images')):
+        image_path = os.path.join(data_dir, 'images', image_filename)
+        mask_path = os.path.join(data_dir, 'masks', image_filename)
+
+        # Read and preprocess image in grayscale
+        image = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
+        image = cv2.resize(image, (IMG_HEIGHT, IMG_WIDTH))
+        image = image / 255.0
+        image = np.expand_dims(image, axis=-1)  # Add channel dimension
+
+        # Read and preprocess mask
+        mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
+        mask = (mask >= 10).astype(np.float32)  # Ensure the correct data type
+        mask = cv2.resize(mask, (IMG_HEIGHT, IMG_WIDTH))
+        mask = mask / 255.0  # Normalize to [0, 1]
+        mask = np.expand_dims(mask, axis=-1)  # Add channel dimension
+        images.append(image)
+        masks.append(mask)
+
+    return np.array(images), np.array(masks)
+
+test_images, test_masks = load_and_preprocess_data(test_data_dir)
+
+model = load_model(model_path,compile = False)
+predictions = model.predict(test_images)
+# Visualize some predictions
+def show_predictions(images, masks, predictions, output_dir, num_samples=25):
+    for i in range(num_samples):
+        plt.figure(figsize=(15, 5))
+
+        plt.subplot(1, 3, 1)
+        plt.imshow(images[i])
+        plt.title('Input Image')
+
+        plt.subplot(1, 3, 2)
+        plt.imshow(masks[i][:, :, 0], cmap='viridis')
+        plt.title('True Mask')
+
+        plt.subplot(1, 3, 3)
+        plt.imshow(predictions[i][:, :, 0], cmap='viridis')
+        plt.title('Predicted Mask')
+
+        # Save the figure
+        output_path = os.path.join(output_dir, f"prediction_{i + 1}.png")
+        plt.show()
+
+# Define the output directory
+output_directory = '/content/drive/MyDrive/Unet_mobile_net/predictions'
+
+# Make sure the output directory exists
+#os.makedirs(output_directory, exist_ok=True)
+
+# Save predictions on the test data
+show_predictions(test_images, test_masks, predictions, output_directory)
